@@ -12,16 +12,25 @@
     }
   </script>
 </head>
-<body class="bg-slate-100 flex items-center justify-center h-screen">
+<body class="bg-slate-100 flex items-center justify-center min-h-screen p-4">
 
   <div class="bg-white p-8 rounded-2xl shadow-lg w-full max-w-md">
     <div class="text-center mb-6">
       <h2 class="text-2xl font-bold text-blue-600">LOGIN ADMIN</h2>
       <p class="text-xs text-slate-500 mt-1">Masuk untuk mengelola data & laporan event</p>
+
+      <!-- Indikator Status Koneksi Server -->
+      <div class="mt-3 flex flex-col items-center gap-1">
+        <div id="serverBadge" class="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-800">
+          <span id="serverDot" class="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+          <span id="serverText">Mengecek koneksi server...</span>
+        </div>
+        <p id="serverDetail" class="text-[11px] text-slate-500 hidden break-all"></p>
+      </div>
     </div>
 
     <!-- Kotak Pesan Notifikasi -->
-    <div id="alertMsg" class="hidden p-3 rounded-xl text-xs font-semibold mb-4 text-center"></div>
+    <div id="alertMsg" class="hidden p-3 rounded-xl text-xs font-semibold mb-4 text-center break-words"></div>
 
     <form onsubmit="handleLogin(event)" class="space-y-4">
       <div>
@@ -34,29 +43,63 @@
         <input type="password" id="password" required placeholder="Masukan Password Anda" class="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none">
       </div>
 
-      <button type="submit" class="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl text-sm shadow-lg shadow-blue-500/30 transition">
+      <button type="submit" id="btnLogin" class="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl text-sm shadow-lg shadow-blue-500/30 transition">
         Masuk ke Dashboard
       </button>
     </form>
   </div>
 
   <script>
+    async function cekStatusServer() {
+      const badge = document.getElementById('serverBadge');
+      const dot = document.getElementById('serverDot');
+      const text = document.getElementById('serverText');
+      const detail = document.getElementById('serverDetail');
+
+      try {
+        const res = await fetch('/api/health', { cache: 'no-store' });
+        const data = await res.json().catch(() => ({}));
+
+        if (res.ok && data.status === 'ok') {
+          badge.className = 'inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-700';
+          dot.className = 'w-2 h-2 rounded-full bg-emerald-500';
+          text.innerText = 'Server & Database Terhubung';
+          detail.classList.add('hidden');
+        } else {
+          badge.className = 'inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-rose-100 text-rose-700';
+          dot.className = 'w-2 h-2 rounded-full bg-rose-500';
+          text.innerText = 'Koneksi Database Bermasalah';
+          detail.innerText = data.message || `HTTP ${res.status}`;
+          detail.className = 'text-[11px] text-rose-600 mt-1 break-all';
+        }
+      } catch (err) {
+        badge.className = 'inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-rose-100 text-rose-700';
+        dot.className = 'w-2 h-2 rounded-full bg-rose-500';
+        text.innerText = 'Server Backend Tidak Terhubung';
+        detail.innerText = err.message || 'Gagal menjangkau /api/health';
+        detail.className = 'text-[11px] text-rose-600 mt-1 break-all';
+      }
+    }
+
     async function handleLogin(event) {
       event.preventDefault();
-      
+
       const username = document.getElementById('username').value.trim();
       const password = document.getElementById('password').value.trim();
       const alertMsg = document.getElementById('alertMsg');
+      const btnLogin = document.getElementById('btnLogin');
+
+      btnLogin.disabled = true;
+      btnLogin.innerText = 'Memeriksa...';
 
       try {
-        // Menggunakan path relatif agar otomatis bekerja di localhost maupun domain hosting
         const response = await fetch('/api/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ username, password })
         });
 
-        const data = await response.json();
+        const data = await response.json().catch(() => ({}));
 
         if (response.ok) {
           alertMsg.className = 'p-3 rounded-xl text-xs font-semibold mb-4 text-center bg-emerald-100 text-emerald-700';
@@ -69,19 +112,23 @@
           setTimeout(() => {
             window.location.href = 'admin.html';
           }, 1000);
-
         } else {
           alertMsg.className = 'p-3 rounded-xl text-xs font-semibold mb-4 text-center bg-rose-100 text-rose-700';
-          alertMsg.innerText = data.error || 'Login gagal! Periksa username dan password.';
+          alertMsg.innerText = data.error || `Login gagal (HTTP ${response.status}). Periksa username dan password.`;
           alertMsg.classList.remove('hidden');
+          btnLogin.disabled = false;
+          btnLogin.innerText = 'Masuk ke Dashboard';
         }
-
       } catch (error) {
         alertMsg.className = 'p-3 rounded-xl text-xs font-semibold mb-4 text-center bg-rose-100 text-rose-700';
-        alertMsg.innerText = 'Gagal terhubung ke server backend! Pastikan server Node.js berjalan.';
+        alertMsg.innerText = 'Gagal terhubung ke server backend: ' + error.message;
         alertMsg.classList.remove('hidden');
+        btnLogin.disabled = false;
+        btnLogin.innerText = 'Masuk ke Dashboard';
       }
     }
+
+    cekStatusServer();
   </script>
 </body>
 </html>
