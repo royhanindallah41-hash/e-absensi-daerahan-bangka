@@ -437,6 +437,29 @@ app.get('/api/rekap', (req, res) => {
   });
 });
 
+// ========================================================
+// 5. RUTE FILE STATIS HTML & JS UNTUK LINGKUNGAN VERCEL
+// ========================================================
+const ALLOWED_FILES = [
+  'index.html',
+  'login.html',
+  'admin.html',
+  'scanner.html',
+  'rekapitulasi.html',
+  'data_peserta.html',
+  'cetak_card.html',
+  'card_generator.js',
+  'pdf_generator.js'
+];
+
+app.get('/:file', (req, res, next) => {
+  const fileName = req.params.file;
+  if (ALLOWED_FILES.includes(fileName)) {
+    return res.sendFile(path.join(__dirname, fileName));
+  }
+  next();
+});
+
 // Fallback halaman utama jika diakses langsung lewat domain
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
