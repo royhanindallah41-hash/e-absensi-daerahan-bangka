@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cetak ID Card Peserta (Potret) - E-Absensi Daerahan Bangka</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- QRCode.js Library -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  
+  <!-- Library jsPDF untuk Export PDF Profesional -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <!-- Script Generator ID Card Terpisah -->
+  <script src="card_generator.js"></script>
+
+   <!-- SATPAM KEAMANAN: Cek login sebelum halaman dirender -->
+  <script>
+    const sessionActive = localStorage.getItem('admin_logged_in');
+    if (!sessionActive || sessionActive !== 'true') {
+      // Jika tidak ada atau nilainya bukan true, tendang ke login
+      window.location.replace('login.html');
+    }
+  </script>
+</head>
+<body class="bg-slate-100 font-sans antialiased">
+
+  <div class="flex h-screen overflow-hidden">
+
+    <!-- ==================== SIDEBAR NAVIGASI ==================== -->
+     <aside class="w-64 bg-slate-900 text-slate-300 flex flex-col justify-between shadow-xl">
+      <div>
+        <div class="p-6 flex items-center space-x-3 border-b border-slate-800">
+          <div class="bg-blue-600 p-2.5 rounded-xl text-white shadow-lg shadow-blue-500/30">
+            <i class="fa-solid fa-qrcode text-xl"></i>
+          </div>
+          <div>
+            <h1 class="font-bold text-white text-lg leading-tight">E-Absensi</h1>
+            <p class="text-xs text-slate-400">Daerahan Bangka</p>
+          </div>
+        </div>
+
+        <nav class="p-4 space-y-1 text-sm font-medium">
+          <p class="px-3 py-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">Utama</p>
+          <a href="admin.html" class="flex items-center space-x-3 px-3 py-2.5 rounded-xl hover:bg-slate-800 hover:text-white transition">
+            <i class="fa-solid fa-chart-pie w-5"></i>
+            <span>Dashboard</span>
+          </a>
+
+          <p class="px-3 pt-4 pb-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">Master Data</p>
+          <a href="data_peserta.html" class="flex items-center space-x-3 px-3 py-2.5 rounded-xl hover:bg-slate-800 hover:text-white transition">
+            <i class="fa-solid fa-users w-5"></i>
+            <span>Data Peserta</span>
+          </a>
+          <a href="#" class="flex items-center space-x-3 px-3 py-2.5 rounded-xl hover:bg-slate-800 hover:text-white transition">
+            <i class="fa-solid fa-calendar-check w-5"></i>
+            <span>Jadwal Event</span>
+          </a>
+
+          <p class="px-3 pt-4 pb-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">Absensi & Laporan</p>
+          <a href="scanner.html" class="flex items-center space-x-3 px-3 py-2.5 rounded-xl hover:bg-slate-800 hover:text-white transition">
+            <i class="fa-solid fa-camera-retro w-5 text-emerald-400"></i>
+            <span>Scan QR Mode</span>
+          </a>
+          
+          <a href="rekapitulasi.html" class="flex items-center space-x-3 px-3 py-2.5 rounded-xl hover:bg-slate-800 hover:text-white transition">
+            <i class="fa-solid fa-list-check w-5"></i>
+            <span>Rekapitulasi</span>
+          </a>
+
+          <a href="cetak_card.html" class="flex items-center space-x-3 px-3 py-2.5 rounded-xl bg-blue-600 text-white shadow-md shadow-blue-500/20">
+            <i class="fa-solid fa-users w-5"></i>
+            <span>Cetak QR Card</span>
+          </a>
+
+          <p class="px-3 pt-4 pb-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">Pengaturan</p>
+          <a href="#" class="flex items-center space-x-3 px-3 py-2.5 rounded-xl hover:bg-slate-800 hover:text-white transition">
+            <i class="fa-solid fa-user-shield w-5"></i>
+            <span>Kelola Admin</span>
+          </a>
+        </nav>
+      </div>
+
+      <div class="p-4 border-t border-slate-800 flex items-center justify-between">
+        <div class="flex items-center space-x-3">
+          <div class="w-9 h-9 rounded-full bg-blue-500 flex items-center justify-center font-bold text-white shadow-md">
+            R
+          </div>
+          <div class="text-xs">
+            <p class="font-semibold text-white">Royhan</p>
+            <p class="text-slate-400">Saya Intel</p>
+          </div>
+        </div>
+        <button onclick="logoutAdmin()" class="text-slate-400 hover:text-rose-400 transition" title="Logout">
+          <i class="fa-solid fa-right-from-bracket text-lg"></i>
+        </button>
+      </div>
+    </aside>
+
+    <!-- ==================== MAIN CONTENT AREA ==================== -->
+    <main class="flex-1 overflow-y-auto p-8">
+      
+      <!-- Header Bar -->
+      <div class="flex flex-col md:flex-row md:items-center justify-between mb-6 gap-4">
+        <div>
+          <h2 class="text-2xl font-bold text-slate-800">Cetak ID Card Peserta (Format Potret)</h2>
+          <p class="text-slate-500 text-sm">Generate QR Code massal dan unduh kartu ID Card potret siap pangkas (A4).</p>
+        </div>
+        <div class="flex items-center space-x-3">
+          <button id="btnDownloadPDF" onclick="prosesDownloadKartuPDF()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2.5 rounded-xl text-sm font-semibold shadow-lg shadow-emerald-500/20 transition flex items-center space-x-2">
+            <i class="fa-solid fa-file-pdf"></i>
+            <span>Download PDF A4 Profesional</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- FILTER & CONTROL PANEL -->
+      <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-200/80 mb-6">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+          
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1.5">Pilih Wilayah Peserta</label>
+            <select id="filterWilayah" onchange="loadPesertaForCard()" class="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs md:text-sm font-medium focus:ring-2 focus:ring-blue-500 outline-none">
+              <option value="ALL">Semua Wilayah</option>
+              <option value="pengurus_daerah">Pengurus Daerah (D-)</option>
+              <option value="desa_barat">Desa Barat (B-)</option>
+              <option value="desa_timur">Desa Timur (T-)</option>
+              <option value="desa_utara">Desa Utara (U-)</option>
+              <option value="desa_pangkalpinang_1">Desa Pangkalpinang 1 (P1-)</option>
+              <option value="desa_pangkalpinang_2">Desa Pangkalpinang 2 (P2-)</option>
+              <option value="desa_koba">Desa Koba (K-)</option>
+              <option value="desa_lubuk">Desa Lubuk (L-)</option>
+              <option value="desa_selatan">Desa Selatan (S-)</option>
+            </select>
+          </div>
+
+          <div class="flex items-center space-x-3 py-2">
+            <input type="checkbox" id="selectAll" onchange="toggleSelectAll(this)" checked class="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500">
+            <label for="selectAll" class="text-xs md:text-sm font-semibold text-slate-700">Pilih Semua Kartu Ditampilkan</label>
+          </div>
+
+          <div class="text-right text-xs text-slate-500 font-medium">
+            Total Kartu Siap Cetak: <span id="totalCardCount" class="font-bold text-blue-600">0</span> Kartu
+          </div>
+
+        </div>
+      </div>
+
+      <!-- CONTAINER GRID CARD PREVIEW -->
+      <div id="cardGridContainer" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+        <!-- Preview kartu-kartu di web -->
+      </div>
+
+    </main>
+  </div>
+
+  <script>
+    // Menggunakan path relatif agar otomatis mengarah ke domain hosting / Vercel
+    const API_PESERTA_URL = '/api/peserta';
+    let allPesertaData = [];
+
+    document.addEventListener('DOMContentLoaded', () => {
+      loadPesertaForCard();
+    });
+
+    // Fungsi Logout Admin
+    function logoutAdmin() {
+      if (confirm('Yakin ingin keluar dari sesi admin?')) {
+        // Hapus SEMUA kunci sesi yang mungkin tertinggal
+        localStorage.removeItem('admin_logged_in');
+        localStorage.removeItem('adminUser');
+        localStorage.clear(); // Membersihkan seluruh storage agar benar-benar bersih
+        
+        // Alihkan paksa ke halaman login
+        window.location.replace('login.html');
+      }
+    }
+
+    async function loadPesertaForCard() {
+      const container = document.getElementById('cardGridContainer');
+      const filterWilayah = document.getElementById('filterWilayah').value;
+
+      container.innerHTML = `<div class="col-span-full text-center py-12 text-slate-400"><i class="fa-solid fa-spinner animate-spin text-2xl mb-2"></i><p class="text-xs">Mengekstrak data peserta...</p></div>`;
+
+      try {
+        const response = await fetch(API_PESERTA_URL);
+        if (!response.ok) throw new Error('Gagal terhubung ke API Peserta');
+
+        allPesertaData = await response.json();
+
+        let filteredData = allPesertaData;
+        if (filterWilayah !== 'ALL') {
+          filteredData = allPesertaData.filter(p => p.tabel_asal === filterWilayah);
+        }
+
+        document.getElementById('totalCardCount').innerText = filteredData.length;
+        container.innerHTML = '';
+
+        if (filteredData.length === 0) {
+          container.innerHTML = `<div class="col-span-full text-center py-12 text-slate-400">Tidak ada peserta ditemukan pada wilayah ini.</div>`;
+          return;
+        }
+
+        filteredData.forEach((peserta) => {
+          const cardId = `qr-preview-${peserta.id}`;
+          
+          const cardElement = document.createElement('div');
+          cardElement.className = 'card-item relative bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden flex flex-col justify-between p-3 transition hover:shadow-md';
+          cardElement.style.width = '200px';
+          cardElement.style.height = '310px';
+
+          cardElement.innerHTML = `
+            <div class="absolute top-2 right-2 z-10">
+              <input type="checkbox" class="item-checkbox w-4 h-4 text-blue-600 rounded border-slate-300" checked value="${peserta.id}" data-utusan="${peserta.utusan}">
+            </div>
+
+            <div class="bg-blue-700 -mx-3 -mt-3 p-2.5 text-center text-white mb-2">
+              <div class="text-[9px] font-bold uppercase tracking-wider text-blue-200">E-Absensi Event</div>
+              <div class="text-[11px] font-extrabold uppercase leading-tight">DAERAHAN BANGKA</div>
+            </div>
+
+            <div class="text-center my-1">
+              <span class="bg-slate-100 text-blue-800 text-xs font-black px-2.5 py-1 rounded-md border border-slate-200 tracking-wider">
+                ${peserta.id}
+              </span>
+            </div>
+
+            <div class="flex justify-center items-center my-1">
+              <div id="${cardId}" class="p-1.5 bg-white border border-slate-200 rounded-xl shadow-inner"></div>
+            </div>
+
+            <div class="text-center my-1 px-1">
+              <p class="text-[9px] font-semibold text-slate-400 uppercase tracking-wider">Utusan / Dapukan</p>
+              <p class="text-xs font-bold text-slate-800 leading-tight line-clamp-2">${peserta.utusan}</p>
+            </div>
+
+            <div class="border-t border-slate-100 pt-1.5 text-center -mx-3 -mb-3 bg-slate-50 p-1.5">
+              <p class="text-[8px] text-slate-400 font-medium">Tunjukkan QR ini pada petugas scanner</p>
+            </div>
+          `;
+
+          container.appendChild(cardElement);
+
+          setTimeout(() => {
+            new QRCode(document.getElementById(cardId), {
+              text: peserta.id,
+              width: 85,
+              height: 85,
+              colorDark: "#0f172a",
+              colorLight: "#ffffff",
+              correctLevel: QRCode.CorrectLevel.H
+            });
+          }, 30);
+        });
+
+      } catch (error) {
+        console.error('Error rendering cards:', error);
+        container.innerHTML = `<div class="col-span-full text-center py-12 text-rose-500 font-semibold">Gagal memuat data kartu. Periksa koneksi atau status server.</div>`;
+      }
+    }
+
+    function toggleSelectAll(master) {
+      const checkboxes = document.querySelectorAll('.item-checkbox');
+      checkboxes.forEach(cb => cb.checked = master.checked);
+    }
+
+    // MEMANGGIL GENERATOR PDF PROFESIONAL DARI FILE TERPISAH
+    async function prosesDownloadKartuPDF() {
+      const checkboxes = document.querySelectorAll('.item-checkbox:checked');
+      if (checkboxes.length === 0) {
+        alert('Pilih setidaknya satu kartu yang ingin diunduh.');
+        return;
+      }
+
+      const btn = document.getElementById('btnDownloadPDF');
+      const originalText = btn.innerHTML;
+      btn.disabled = true;
+      btn.innerHTML = `<i class="fa-solid fa-spinner animate-spin"></i> <span>Menyusun Dokumen PDF...</span>`;
+
+      try {
+        const selectedList = [];
+        checkboxes.forEach(cb => {
+          selectedList.push({
+            id: cb.value,
+            utusan: cb.getAttribute('data-utusan')
+          });
+        });
+
+        await generateCardsPDF(selectedList);
+      } catch (err) {
+        console.error('Gagal membuat PDF kartu:', err);
+        alert('Terjadi kesalahan saat memproses file PDF.');
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+      }
+    }
+  </script>
+</body>
+</html>
