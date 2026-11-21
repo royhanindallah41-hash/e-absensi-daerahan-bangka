@@ -80,10 +80,30 @@
     </div>
 
     <!-- Mode 1: Camera Scanner -->
-    <div id="modeCamera" class="space-y-4 hidden">
+    <div id="modeCamera" class="space-y-3 hidden">
+      <!-- Pilihan Kamera -->
+      <div class="bg-slate-50 border border-slate-200 rounded-2xl p-3 space-y-2">
+        <div class="flex items-center justify-between">
+          <label for="cameraSelect" class="text-xs font-bold text-slate-700 flex items-center space-x-1.5">
+            <i class="fa-solid fa-video text-blue-600"></i>
+            <span>Pilih Kamera</span>
+          </label>
+          <button type="button" onclick="refreshCameraList()" class="text-[11px] font-semibold text-blue-600 hover:text-blue-800 flex items-center space-x-1">
+            <i class="fa-solid fa-rotate-right"></i>
+            <span>Refresh</span>
+          </button>
+        </div>
+        <select id="cameraSelect" onchange="changeSelectedCamera()" class="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:ring-2 focus:ring-blue-500 outline-none">
+          <option value="">Memuat daftar kamera...</option>
+        </select>
+        <p id="cameraStatusText" class="text-[11px] text-slate-500">Siap memuat kamera.</p>
+      </div>
+
+      <!-- Area Video Scanner -->
       <div class="overflow-hidden rounded-2xl border border-slate-200 bg-slate-900 relative">
         <div id="reader" class="w-full h-64"></div>
       </div>
+
       <p class="text-[11px] text-slate-400 text-center">Arahkan kamera ke Kode QR peserta pada kartu fisik / HP.</p>
     </div>
 
@@ -115,10 +135,11 @@
   </div>
 
   <script>
-    // Menggunakan path relatif agar otomatis mengarah ke domain hosting / Vercel
     const API_URL = '/api/absen';
-    let html5QrcodeScanner = null;
+    let html5QrCode = null;
+    let isCameraRunning = false;
     let isProcessingScan = false;
+    let availableCameras = [];
 
     document.addEventListener('DOMContentLoaded', () => {
       // 1. Cek Sesi Login (Keamanan)
@@ -141,11 +162,9 @@
     function updateLiveClock() {
       const now = new Date();
       
-      // Format Tanggal (Contoh: Rabu, 18 Nov 2026)
       const options = { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' };
       document.getElementById('liveDate').innerText = now.toLocaleDateString('id-ID', options);
 
-      // Format Jam (HH:MM:SS)
       const hours = String(now.getHours()).padStart(2, '0');
       const minutes = String(now.getMinutes()).padStart(2, '0');
       const seconds = String(now.getSeconds()).padStart(2, '0');
@@ -174,7 +193,7 @@
       }
     }
 
-    function switchTab(mode) {
+    async function switchTab(mode) {
       const tabCam = document.getElementById('tabCamera');
       const tabMan = document.getElementById('tabManual');
       const modeCam = document.getElementById('modeCamera');
@@ -185,14 +204,139 @@
         tabMan.className = 'py-2.5 rounded-xl text-slate-500 hover:text-slate-800 transition flex items-center justify-center space-x-2';
         modeCam.classList.remove('hidden');
         modeMan.classList.add('hidden');
-        startScanner();
+        await initCameraSelectionAndStart();
       } else {
         tabMan.className = 'py-2.5 rounded-xl bg-white text-blue-600 shadow-sm transition flex items-center justify-center space-x-2';
         tabCam.className = 'py-2.5 rounded-xl text-slate-500 hover:text-slate-800 transition flex items-center justify-center space-x-2';
         modeMan.classList.remove('hidden');
         modeCam.classList.add('hidden');
-        stopScanner();
+        await stopScanner();
       }
+    }
+
+    async function refreshCameraList() {
+      await stopScanner();
+      await initCameraSelectionAndStart(true);
+    }
+
+    async function initCameraSelectionAndStart(forceRefresh = false) {
+      const selectEl = document.getElementById('cameraSelect');
+      const statusEl = document.getElementById('cameraStatusText');
+
+      if (!html5QrCode) {
+        html5QrCode = new Html5Qrcode("reader");
+      }
+
+      statusEl.className = 'text-[11px] text-slate-500';
+      statusEl.innerText = 'Mendeteksi kamera perangkat...';
+
+      try {
+        if (availableCameras.length === 0 || forceRefresh) {
+          availableCameras = await Html5Qrcode.getCameras();
+        }
+
+        if (!availableCameras || availableCameras.length === 0) {
+          selectEl.innerHTML = '<option value="">Tidak ada kamera terdeteksi</option>';
+          statusEl.className = 'text-[11px] text-rose-600 font-semibold';
+          statusEl.innerText = 'Kamera tidak ditemukan atau izin kamera belum diizinkan di browser.';
+          return;
+        }
+
+        const previousValue = selectEl.value;
+        selectEl.innerHTML = '';
+
+        availableCameras.forEach((cam, idx) => {
+          const option = document.createElement('option');
+          option.value = cam.id;
+          option.text = cam.label || `Kamera ${idx + 1}`;
+          selectEl.appendChild(option);
+        });
+
+        // Pilih kamera belakang jika ada (lebih cocok untuk scan QR di HP), selain itu kamera pertama
+        const backCamera = availableCameras.find(cam =>
+          /back|rear|environment/i.test(cam.label || '')
+        );
+
+        if (previousValue && availableCameras.some(c => c.id === previousValue)) {
+          selectEl.value = previousValue;
+        } else if (backCamera) {
+          selectEl.value = backCamera.id;
+        } else {
+          selectEl.value = availableCameras[0].id;
+        }
+
+        await startScannerWithCameraId(selectEl.value);
+      } catch (err) {
+        console.error('Gagal memuat daftar kamera:', err);
+        selectEl.innerHTML = '<option value="">Akses kamera ditolak / gagal</option>';
+        statusEl.className = 'text-[11px] text-rose-600 font-semibold';
+        statusEl.innerText = 'Gagal mengakses kamera. Pastikan izin Camera di browser sudah Allow dan kamera tidak dipakai aplikasi lain.';
+      }
+    }
+
+    async function changeSelectedCamera() {
+      const selectEl = document.getElementById('cameraSelect');
+      const cameraId = selectEl.value;
+      if (!cameraId) return;
+
+      await stopScanner();
+      await startScannerWithCameraId(cameraId);
+    }
+
+    async function startScannerWithCameraId(cameraId) {
+      const statusEl = document.getElementById('cameraStatusText');
+      if (!html5QrCode) {
+        html5QrCode = new Html5Qrcode("reader");
+      }
+
+      if (isCameraRunning) {
+        await stopScanner();
+      }
+
+      try {
+        statusEl.className = 'text-[11px] text-blue-600 font-semibold';
+        statusEl.innerText = 'Menyalakan kamera...';
+
+        await html5QrCode.start(
+          cameraId,
+          {
+            fps: 10,
+            qrbox: { width: 220, height: 220 }
+          },
+          async (qrCodeMessage) => {
+            if (isProcessingScan) return;
+            isProcessingScan = true;
+            await sendAbsen(qrCodeMessage.trim());
+            setTimeout(() => {
+              isProcessingScan = false;
+            }, 2500);
+          },
+          () => {
+            // Abaikan error frame kosong saat belum ada QR terbaca
+          }
+        );
+
+        isCameraRunning = true;
+        statusEl.className = 'text-[11px] text-emerald-600 font-semibold';
+        statusEl.innerText = 'Kamera aktif. Arahkan ke QR Code peserta.';
+      } catch (err) {
+        console.error('Gagal menyalakan kamera:', err);
+        isCameraRunning = false;
+        statusEl.className = 'text-[11px] text-rose-600 font-semibold';
+        statusEl.innerText = 'Kamera gagal dibuka. Coba pilih kamera lain atau tutup aplikasi lain yang memakai kamera.';
+      }
+    }
+
+    async function stopScanner() {
+      if (html5QrCode && isCameraRunning) {
+        try {
+          await html5QrCode.stop();
+        } catch (err) {
+          console.error('Gagal menghentikan kamera:', err);
+        }
+      }
+      isCameraRunning = false;
+      isProcessingScan = false;
     }
 
     async function sendAbsen(userId) {
@@ -222,7 +366,7 @@
             </div>
           `;
           document.getElementById('inputIdPeserta').value = '';
-          loadTotalAbsenHariIni(); // Refresh counter total
+          loadTotalAbsenHariIni();
         } else {
           notifBox.className = 'mt-5 p-4 rounded-2xl text-center text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-200';
           notifBox.innerHTML = `<i class="fa-solid fa-triangle-exclamation mr-1"></i> ${resData.error || 'Gagal merekam absensi!'}`;
@@ -244,29 +388,9 @@
       }
     }
 
-    function startScanner() {
-      if (!html5QrcodeScanner) {
-        html5QrcodeScanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: { width: 220, height: 220 } });
-        html5QrcodeScanner.render(async (qrCodeMessage) => {
-          if (isProcessingScan) return;
-          isProcessingScan = true;
-          await sendAbsen(qrCodeMessage.trim());
-          setTimeout(() => {
-            isProcessingScan = false;
-          }, 2500);
-        }, (errorMessage) => {
-          // Abaikan error frame kosong saat belum ada QR terbaca
-        });
-      }
-    }
-
-    function stopScanner() {
-      if (html5QrcodeScanner) {
-        html5QrcodeScanner.clear().catch(error => console.error(error));
-        html5QrcodeScanner = null;
-      }
-      isProcessingScan = false;
-    }
+    window.addEventListener('beforeunload', () => {
+      stopScanner();
+    });
   </script>
 </body>
 </html>
