@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login Admin - E-Absensi</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    // Jika sudah login, langsung arahkan ke dashboard
+    if (localStorage.getItem('admin_logged_in') === 'true') {
+      window.location.replace('admin.html');
+    }
+  </script>
+</head>
+<body class="bg-slate-100 flex items-center justify-center h-screen">
+
+  <div class="bg-white p-8 rounded-2xl shadow-lg w-full max-w-md">
+    <div class="text-center mb-6">
+      <h2 class="text-2xl font-bold text-blue-600">LOGIN ADMIN</h2>
+      <p class="text-xs text-slate-500 mt-1">Masuk untuk mengelola data & laporan event</p>
+    </div>
+
+    <!-- Kotak Pesan Notifikasi -->
+    <div id="alertMsg" class="hidden p-3 rounded-xl text-xs font-semibold mb-4 text-center"></div>
+
+    <form onsubmit="handleLogin(event)" class="space-y-4">
+      <div>
+        <label class="block text-xs font-semibold text-slate-600 mb-1">Username Admin:</label>
+        <input type="text" id="username" required placeholder="Masukan Username Anda" class="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+      </div>
+
+      <div>
+        <label class="block text-xs font-semibold text-slate-600 mb-1">Password:</label>
+        <input type="password" id="password" required placeholder="Masukan Password Anda" class="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+      </div>
+
+      <button type="submit" class="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl text-sm shadow-lg shadow-blue-500/30 transition">
+        Masuk ke Dashboard
+      </button>
+    </form>
+  </div>
+
+  <script>
+    async function handleLogin(event) {
+      event.preventDefault();
+      
+      const username = document.getElementById('username').value.trim();
+      const password = document.getElementById('password').value.trim();
+      const alertMsg = document.getElementById('alertMsg');
+
+      try {
+        // Menggunakan path relatif agar otomatis bekerja di localhost maupun domain hosting
+        const response = await fetch('/api/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password })
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+          alertMsg.className = 'p-3 rounded-xl text-xs font-semibold mb-4 text-center bg-emerald-100 text-emerald-700';
+          alertMsg.innerText = 'Login berhasil! Mengalihkan ke dashboard...';
+          alertMsg.classList.remove('hidden');
+
+          localStorage.setItem('admin_logged_in', 'true');
+          localStorage.setItem('adminUser', JSON.stringify(data.admin));
+
+          setTimeout(() => {
+            window.location.href = 'admin.html';
+          }, 1000);
+
+        } else {
+          alertMsg.className = 'p-3 rounded-xl text-xs font-semibold mb-4 text-center bg-rose-100 text-rose-700';
+          alertMsg.innerText = data.error || 'Login gagal! Periksa username dan password.';
+          alertMsg.classList.remove('hidden');
+        }
+
+      } catch (error) {
+        alertMsg.className = 'p-3 rounded-xl text-xs font-semibold mb-4 text-center bg-rose-100 text-rose-700';
+        alertMsg.innerText = 'Gagal terhubung ke server backend! Pastikan server Node.js berjalan.';
+        alertMsg.classList.remove('hidden');
+      }
+    }
+  </script>
+</body>
+</html>
