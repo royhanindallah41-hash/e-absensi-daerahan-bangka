@@ -51,6 +51,24 @@ db.getConnection((err, connection) => {
 });
 
 // ========================================================
+// 0. ENDPOINT HEALTH CHECK (CEK SERVER & DATABASE)
+// ========================================================
+app.get('/api/health', (req, res) => {
+  db.query('SELECT 1 AS ok', (err) => {
+    if (err) {
+      return res.status(500).json({
+        status: 'error',
+        message: 'Backend aktif, tetapi gagal terhubung ke database: ' + err.message
+      });
+    }
+    res.json({
+      status: 'ok',
+      message: 'Server backend & database terhubung'
+    });
+  });
+});
+
+// ========================================================
 // DAFTAR TABEL & MAPPING PREFIX ID WILAYAH
 // ========================================================
 const TABEL_WILAYAH = [
@@ -252,229 +270,4 @@ app.post('/api/absen', (req, res) => {
   const { tanggal, waktu, totalMenit } = getLocalDateTime();
 
   let sesiAktif = 1;
-  if (CEK_JAM_SESI) {
-    if (totalMenit < JAM_BUKA_SESI_1) {
-      return res.status(400).json({ error: 'Absensi Sesi 1 belum dibuka (mulai pukul 07:00 WIB).' });
-    } else if (totalMenit >= JAM_BUKA_SESI_2) {
-      sesiAktif = 2;
-    } else {
-      sesiAktif = 1;
-    }
-  } else {
-    sesiAktif = totalMenit >= JAM_BUKA_SESI_2 ? 2 : 1;
-  }
-
-  db.query(`SELECT * FROM ${tableName} WHERE id = ?`, [cleanId], (err, results) => {
-    if (err) return res.status(500).json({ error: err.message });
-    if (results.length === 0) {
-      return res.status(404).json({ error: 'Peserta tidak terdaftar di database!' });
-    }
-
-    const peserta = results[0];
-
-    db.query(`SELECT * FROM attendances WHERE user_id = ? AND tanggal = ?`, [cleanId, tanggal], (cekErr, attResults) => {
-      if (cekErr) return res.status(500).json({ error: cekErr.message });
-
-      if (attResults.length === 0) {
-        if (sesiAktif === 1) {
-          const ket = 'Hadir (Sesi 1)';
-          const insertQuery = `
-            INSERT INTO attendances (user_id, nama, utusan, tanggal, waktu_sesi1, waktu_sesi2, keterangan)
-            VALUES (?, ?, ?, ?, ?, NULL, ?)
-          `;
-          db.query(insertQuery, [cleanId, peserta.nama || '-', peserta.utusan, tanggal, waktu, ket], (insErr, insRes) => {
-            if (insErr) return res.status(500).json({ error: insErr.message });
-            return res.json({
-              message: 'Absensi Sesi 1 berhasil direkam!',
-              data: {
-                no: insRes.insertId,
-                id: cleanId,
-                nama: peserta.nama || '-',
-                utusan: peserta.utusan,
-                tanggal,
-                waktu,
-                sesi: 'Sesi 1',
-                keterangan: ket
-              }
-            });
-          });
-        } else {
-          const ket = 'Hadir (Sesi 2)';
-          const insertQuery = `
-            INSERT INTO attendances (user_id, nama, utusan, tanggal, waktu_sesi1, waktu_sesi2, keterangan)
-            VALUES (?, ?, ?, ?, NULL, ?, ?)
-          `;
-          db.query(insertQuery, [cleanId, peserta.nama || '-', peserta.utusan, tanggal, waktu, ket], (insErr, insRes) => {
-            if (insErr) return res.status(500).json({ error: insErr.message });
-            return res.json({
-              message: 'Absensi Sesi 2 berhasil direkam (Paruh Waktu)!',
-              data: {
-                no: insRes.insertId,
-                id: cleanId,
-                nama: peserta.nama || '-',
-                utusan: peserta.utusan,
-                tanggal,
-                waktu,
-                sesi: 'Sesi 2',
-                keterangan: ket
-              }
-            });
-          });
-        }
-      } else {
-        const record = attResults[0];
-
-        if (sesiAktif === 1) {
-          return res.status(400).json({
-            error: `Peserta ${peserta.nama} (${cleanId}) sudah absen Sesi 1 pada pukul ${record.waktu_sesi1}!`
-          });
-        } else {
-          if (record.waktu_sesi2) {
-            return res.status(400).json({
-              error: `Absensi ${peserta.nama} (${cleanId}) hari ini sudah lengkap (Sesi 1 & Sesi 2)!`
-            });
-          }
-
-          const ket = 'Hadir Penuh';
-          const updateQuery = `UPDATE attendances SET waktu_sesi2 = ?, keterangan = ? WHERE id = ?`;
-          db.query(updateQuery, [waktu, ket, record.id], (updErr) => {
-            if (updErr) return res.status(500).json({ error: updErr.message });
-            return res.json({
-              message: 'Absensi Sesi 2 berhasil! Status: Hadir Penuh.',
-              data: {
-                no: record.id,
-                id: cleanId,
-                nama: peserta.nama || '-',
-                utusan: peserta.utusan,
-                tanggal,
-                waktu,
-                sesi: 'Sesi 2',
-                keterangan: ket
-              }
-            });
-          });
-        }
-      }
-    });
-  });
-});
-
-// B. Ambil Rekapitulasi Absensi Hari Ini (Untuk Live Feed di Scanner)
-app.get('/api/absen/today', (req, res) => {
-  const { tanggal } = getLocalDateTime();
-  const query = `
-    SELECT id AS no, user_id AS id_peserta, nama, utusan, tanggal, 
-           waktu_sesi1, waktu_sesi2,
-           COALESCE(waktu_sesi2, waktu_sesi1) AS waktu_scan,
-           keterangan
-    FROM attendances
-    WHERE tanggal = ?
-    ORDER BY id DESC
-  `;
-
-  db.query(query, [tanggal], (err, results) => {
-    if (err) return res.status(500).json({ error: err.message });
-    res.json(results);
-  });
-});
-
-// C. Dispensasi / Persetujuan Admin (Ubah Paruh Waktu -> Hadir Penuh 1 Klik)
-app.put('/api/absen/dispensasi/:id', (req, res) => {
-  const recordId = req.params.id;
-  const query = `UPDATE attendances SET keterangan = 'Hadir Penuh' WHERE id = ?`;
-
-  db.query(query, [recordId], (err, result) => {
-    if (err) return res.status(500).json({ error: err.message });
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ error: 'Data absensi tidak ditemukan!' });
-    }
-    res.json({ message: 'Status kehadiran berhasil disetujui menjadi Hadir Penuh!' });
-  });
-});
-
-// ========================================================
-// 4. ENDPOINT REKAPITULASI ABSENSI (FILTER TANGGAL & WILAYAH)
-// ========================================================
-app.get('/api/rekap', (req, res) => {
-  const { tanggal, wilayah } = req.query;
-
-  const TABLE_TO_PREFIX = {
-    'pengurus_daerah': 'D-',
-    'desa_barat': 'B-',
-    'desa_timur': 'T-',
-    'desa_utara': 'U-',
-    'desa_pangkalpinang_1': 'P1-',
-    'desa_pangkalpinang_2': 'P2-',
-    'desa_koba': 'K-',
-    'desa_lubuk': 'L-',
-    'desa_selatan': 'S-'
-  };
-
-  let query = `
-    SELECT id AS no, user_id AS id_peserta, nama, utusan, tanggal, 
-           waktu_sesi1, waktu_sesi2, keterangan
-    FROM attendances
-    WHERE 1=1
-  `;
-  const params = [];
-
-  if (tanggal) {
-    query += ` AND tanggal = ?`;
-    params.push(tanggal);
-  }
-
-  if (wilayah && wilayah !== 'ALL' && TABLE_TO_PREFIX[wilayah]) {
-    const prefix = TABLE_TO_PREFIX[wilayah];
-    query += ` AND user_id LIKE ?`;
-    params.push(`${prefix}%`);
-  }
-
-  query += ` ORDER BY id ASC`;
-
-  db.query(query, params, (err, results) => {
-    if (err) return res.status(500).json({ error: err.message });
-    res.json(results);
-  });
-});
-
-// ========================================================
-// 5. RUTE FILE STATIS HTML & JS DARI FOLDER PUBLIC
-// ========================================================
-const ALLOWED_FILES = [
-  'index.html',
-  'login.html',
-  'admin.html',
-  'scanner.html',
-  'rekapitulasi.html',
-  'data_peserta.html',
-  'cetak_card.html',
-  'card_generator.js',
-  'pdf_generator.js'
-];
-
-app.get('/:file', (req, res, next) => {
-  const fileName = req.params.file;
-  if (ALLOWED_FILES.includes(fileName)) {
-    return res.sendFile(path.join(__dirname, 'public', fileName));
-  }
-  next();
-});
-
-// Fallback halaman utama jika diakses langsung lewat domain
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-
-// ========================================================
-// JALANKAN SERVER (LOKAL) & EXPORT APP (VERCEL)
-// ========================================================
-if (!process.env.VERCEL) {
-  app.listen(PORT, () => {
-    console.log(`=================================`);
-    console.log(`Server Absensi Aktif di Port ${PORT}`);
-    console.log(`Zona Waktu: ${process.env.TZ}`);
-    console.log(`=================================`);
-  });
-}
-
-module.exports = app;
+  if (CE
