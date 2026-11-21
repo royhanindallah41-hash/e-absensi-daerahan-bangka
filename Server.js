@@ -22,8 +22,8 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Menyajikan file HTML statis dari folder proyek
-app.use(express.static(__dirname));
+// Menyajikan file statis dari folder public
+app.use(express.static(path.join(__dirname, 'public')));
 
 // Konfigurasi Connection Pool MySQL untuk Aiven (SSL REQUIRED) + fallback lokal
 const db = mysql.createPool({
@@ -438,7 +438,7 @@ app.get('/api/rekap', (req, res) => {
 });
 
 // ========================================================
-// 5. RUTE FILE STATIS HTML & JS UNTUK LINGKUNGAN VERCEL
+// 5. RUTE FILE STATIS HTML & JS DARI FOLDER PUBLIC
 // ========================================================
 const ALLOWED_FILES = [
   'index.html',
@@ -455,14 +455,14 @@ const ALLOWED_FILES = [
 app.get('/:file', (req, res, next) => {
   const fileName = req.params.file;
   if (ALLOWED_FILES.includes(fileName)) {
-    return res.sendFile(path.join(__dirname, fileName));
+    return res.sendFile(path.join(__dirname, 'public', fileName));
   }
   next();
 });
 
 // Fallback halaman utama jika diakses langsung lewat domain
 app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'index.html'));
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 // ========================================================
